@@ -23,19 +23,33 @@ const (
 
 var printMutex sync.Mutex
 
-func collectPaths(root string, pattern, excludePattern *regexp.Regexp) ([]string, error) {
+func isValidPath(path string, info os.FileInfo, filePattern *regexp.Regexp, excludePattern []*regexp.Regexp) bool {
+	if info.IsDir() {
+		return false
+	}
+
+	for _, pattern := range excludePattern {
+		if pattern.MatchString(path) {
+			return false
+		}
+	}
+
+	if !filePattern.MatchString(path) {
+		return false
+	}
+
+	return true
+}
+
+func collectPaths(root string, pattern *regexp.Regexp, excludePattern []*regexp.Regexp) ([]string, error) {
 	files := []string{}
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
 
-		if !info.IsDir() {
-			if pattern.MatchString(path) {
-				if !excludePattern.MatchString(path) {
-					files = append(files, path)
-				}
-			}
+		if isValidPath(path, info, pattern, excludePattern) {
+			files = append(files, path)
 		}
 		return nil
 	})
@@ -120,7 +134,7 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 	}
 }
 
-func Search(path, searchPattern, filePattern, excludeFilePattern string, windowSize int, ignoreCase, nameOnly bool) {
+func Search(path, searchPattern, filePattern string, excludeFilePatterns []string, windowSize int, ignoreCase, nameOnly bool) {
 	if ignoreCase {
 		filePattern = "(?i)" + filePattern
 		searchPattern = "(?i)" + searchPattern
@@ -128,9 +142,13 @@ func Search(path, searchPattern, filePattern, excludeFilePattern string, windowS
 
 	fileRegex := regexp.MustCompile(filePattern)
 	searchRegex := regexp.MustCompile(searchPattern)
-	excludePattern := regexp.MustCompile(excludeFilePattern)
+	excludeRegex := []*regexp.Regexp{}
+	// excludePattern := regexp.MustCompile(excludeFilePattern)
+	for _, pattern := range excludeFilePatterns {
+		excludeRegex = append(excludeRegex, regexp.MustCompile(pattern))
+	}
 
-	files, err := collectPaths(path, fileRegex, excludePattern)
+	files, err := collectPaths(path, fileRegex, excludeRegex)
 	if err != nil {
 		log.Printf("error walking the path: %v", err)
 	}
