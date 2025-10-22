@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -41,20 +40,17 @@ func isValidPath(path string, info os.FileInfo, filePattern *regexp.Regexp, excl
 	return true
 }
 
-func collectPaths(root string, pattern *regexp.Regexp, excludePattern []*regexp.Regexp) ([]string, error) {
-	files := []string{}
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+func collectPaths(root string, pattern *regexp.Regexp, excludePattern []*regexp.Regexp, jobs chan<- string) error {
+	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
 
 		if isValidPath(path, info, pattern, excludePattern) {
-			files = append(files, path)
+			jobs <- path
 		}
 		return nil
 	})
-
-	return files, err
 }
 
 func collectResult(line string, indeces [][]int, lineNum, windowSize int) []string {
@@ -134,6 +130,12 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 	}
 }
 
+func searchInFiles(filePaths <-chan string, searchPattern *regexp.Regexp, windowSize int, nameOnly bool) {
+	for file := range filePaths {
+		searchInFile(file, searchPattern, windowSize, nameOnly)
+	}
+}
+
 func Search(path, searchPattern, filePattern string, excludeFilePatterns []string, windowSize int, ignoreCase, nameOnly bool) {
 	if ignoreCase {
 		filePattern = "(?i)" + filePattern
@@ -148,30 +150,26 @@ func Search(path, searchPattern, filePattern string, excludeFilePatterns []strin
 		excludeRegex = append(excludeRegex, regexp.MustCompile(pattern))
 	}
 
-	files, err := collectPaths(path, fileRegex, excludeRegex)
-	if err != nil {
-		log.Printf("error walking the path: %v", err)
-	}
 	numWorkers := runtime.NumCPU() * 2
 	runtime.GOMAXPROCS(numWorkers)
 
 	var wg sync.WaitGroup
+	wg.Add(numWorkers)
 	jobs := make(chan string, numWorkers*2)
 
+	// start consumers
 	for range numWorkers {
-		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for filePath := range jobs {
-				searchInFile(filePath, searchRegex, windowSize, nameOnly)
-			}
+			searchInFiles(jobs, searchRegex, windowSize, nameOnly)
 		}()
 	}
 
-	for _, filePath := range files {
-		jobs <- filePath
-	}
+	// start producers
+	go func() {
+		collectPaths(path, fileRegex, excludeRegex, jobs)
+		close(jobs)
+	}()
 
-	close(jobs)
 	wg.Wait()
 }
