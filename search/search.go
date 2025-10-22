@@ -53,7 +53,7 @@ func collectPaths(root string, pattern *regexp.Regexp, excludePattern []*regexp.
 	})
 }
 
-func collectResult(line string, indeces [][]int, lineNum, windowSize int) []string {
+func collectLineResult(line string, indeces [][]int, lineNum, windowSize int) []string {
 	results := []string{}
 
 	for _, m := range indeces {
@@ -115,7 +115,7 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 		line := string(bytesLine)
 		indeces := searchPattern.FindAllStringIndex(line, -1)
 		if indeces != nil {
-			lineResult := collectResult(line, indeces, lineIndex, windowSize)
+			lineResult := collectLineResult(line, indeces, lineIndex, windowSize)
 			fileResults = append(fileResults, lineResult...)
 		}
 		lineIndex++
@@ -139,7 +139,6 @@ func Search(path, searchPattern, filePattern string, excludeFilePatterns []strin
 	fileRegex := regexp.MustCompile(filePattern)
 	searchRegex := regexp.MustCompile(searchPattern)
 	excludeRegex := []*regexp.Regexp{}
-	// excludePattern := regexp.MustCompile(excludeFilePattern)
 	for _, pattern := range excludeFilePatterns {
 		excludeRegex = append(excludeRegex, regexp.MustCompile(pattern))
 	}
