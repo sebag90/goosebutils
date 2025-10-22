@@ -130,12 +130,6 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 	}
 }
 
-func searchInFiles(filePaths <-chan string, searchPattern *regexp.Regexp, windowSize int, nameOnly bool) {
-	for file := range filePaths {
-		searchInFile(file, searchPattern, windowSize, nameOnly)
-	}
-}
-
 func Search(path, searchPattern, filePattern string, excludeFilePatterns []string, windowSize int, ignoreCase, nameOnly bool) {
 	if ignoreCase {
 		filePattern = "(?i)" + filePattern
@@ -155,13 +149,15 @@ func Search(path, searchPattern, filePattern string, excludeFilePatterns []strin
 
 	var wg sync.WaitGroup
 	wg.Add(numWorkers)
-	jobs := make(chan string, numWorkers*2)
+	jobs := make(chan string, 100)
 
 	// start consumers
 	for range numWorkers {
 		go func() {
 			defer wg.Done()
-			searchInFiles(jobs, searchRegex, windowSize, nameOnly)
+			for file := range jobs {
+				searchInFile(file, searchRegex, windowSize, nameOnly)
+			}
 		}()
 	}
 
