@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -53,7 +53,7 @@ func collectPaths(root string, pattern *regexp.Regexp, excludePattern []*regexp.
 	})
 }
 
-func collectLineResult(line string, indeces [][]int, lineNum, windowSize int) []string {
+func collectLineResult(line string, indeces [][]int, lineNum, lineOffset, windowSize int) []string {
 	results := []string{}
 
 	for _, m := range indeces {
@@ -72,7 +72,7 @@ func collectLineResult(line string, indeces [][]int, lineNum, windowSize int) []
 
 		results = append(results, fmt.Sprintf("\t%s:%s\t%s",
 			fmt.Sprintf("%s%d%s", YELLOW, lineNum, END),
-			fmt.Sprintf("%s%d%s", GREEN, start, END),
+			fmt.Sprintf("%s%d%s", GREEN, start+lineOffset, END),
 			strings.TrimSpace(linetoDisplay),
 		))
 	}
@@ -100,33 +100,66 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	const maxCapacity = 1024 * 1024 * 100
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, maxCapacity)
+	const chunkSize = 1024 * 1024
+	buffer := make([]byte, chunkSize)
 
 	fileResults := []string{}
 	lineIndex := 1
-	for scanner.Scan() {
-		bytesLine := scanner.Bytes()
-		if !utf8.Valid(bytesLine) {
+	lineOffset := 0
+
+	var carryOver []byte
+
+	for {
+		_, err := file.Read(buffer)
+
+		if !utf8.Valid(buffer) {
 			return
 		}
-		line := string(bytesLine)
+
+		currentLine := true
+		thisChunk := append(carryOver, buffer...)
+		carryOver := []byte{}
+		nextLineOffset := 0
+		toProcess := []byte{}
+
+		for _, letter := range thisChunk {
+			if letter == '\n' {
+				lineIndex++
+				lineOffset = 0
+				currentLine = false
+				continue
+			}
+
+			if currentLine == true {
+				nextLineOffset++
+				toProcess = append(toProcess, letter)
+			} else {
+				carryOver = append(carryOver, letter)
+			}
+
+		}
+
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return
+		}
+
+		line := string(toProcess)
 		indeces := searchPattern.FindAllStringIndex(line, -1)
+
 		if indeces != nil {
-			lineResult := collectLineResult(line, indeces, lineIndex, windowSize)
+			lineResult := collectLineResult(line, indeces, lineIndex, lineOffset, windowSize)
 			fileResults = append(fileResults, lineResult...)
 		}
-		lineIndex++
+
+		lineOffset += nextLineOffset
+
 	}
 
 	if len(fileResults) > 0 {
 		printResult(filePath, fileResults)
-	}
-
-	if err := scanner.Err(); err != nil {
-		return
 	}
 }
 
