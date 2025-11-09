@@ -70,7 +70,7 @@ func collectLineResult(line string, indeces [][]int, lineNum, lineOffset, window
 		coloredWord := fmt.Sprintf("%s%s%s", RED, line[start:end], END)
 		linetoDisplay := fmt.Sprintf("%s%s%s", leftMargin, coloredWord, rightMargin)
 
-		results = append(results, fmt.Sprintf("\t%s:%s\t%s",
+		results = append(results, fmt.Sprintf("\t%s:%-20s%s",
 			fmt.Sprintf("%s%d%s", YELLOW, lineNum, END),
 			fmt.Sprintf("%s%d%s", GREEN, start+lineOffset, END),
 			strings.TrimSpace(linetoDisplay),
