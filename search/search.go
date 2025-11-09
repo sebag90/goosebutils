@@ -104,9 +104,8 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 	buffer := make([]byte, chunkSize)
 
 	fileResults := []string{}
-	lineIndex := 1
+	lineNum := 1
 	lineOffset := 0
-
 	var carryOver []byte
 
 	for {
@@ -116,25 +115,30 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 			return
 		}
 
+		// carry over line index and offset from last iteration
+		startLineOffset := lineOffset
+		startLineNum := lineNum
+
+		// init variables to track upcoming line
 		currentLine := true
 		thisChunk := append(carryOver, buffer...)
-		carryOver := []byte{}
-		nextLineOffset := 0
+		carryOver = []byte{}
 		toProcess := []byte{}
 
 		for _, letter := range thisChunk {
 			if letter == '\n' {
-				lineIndex++
+				lineNum++
 				lineOffset = 0
 				currentLine = false
 				continue
 			}
 
 			if currentLine == true {
-				nextLineOffset++
+				lineOffset++
 				toProcess = append(toProcess, letter)
 			} else {
 				carryOver = append(carryOver, letter)
+
 			}
 
 		}
@@ -150,12 +154,9 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 		indeces := searchPattern.FindAllStringIndex(line, -1)
 
 		if indeces != nil {
-			lineResult := collectLineResult(line, indeces, lineIndex, lineOffset, windowSize)
+			lineResult := collectLineResult(line, indeces, startLineNum, startLineOffset, windowSize)
 			fileResults = append(fileResults, lineResult...)
 		}
-
-		lineOffset += nextLineOffset
-
 	}
 
 	if len(fileResults) > 0 {
