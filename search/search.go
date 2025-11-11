@@ -33,8 +33,8 @@ func isValidPath(path string, info os.FileInfo, filePattern *regexp.Regexp, excl
 		}
 	}
 
-	if filePattern.MatchString(path) {
-		return true
+	if !filePattern.MatchString(path) {
+		return false
 	}
 
 	return true
@@ -122,17 +122,17 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 
 		for _, letter := range thisChunk {
 			if letter == '\n' {
-				lineNum++
-				lineOffset = 0
-				startLineOffset = 0
 				toProcess := string(thisLine)
-				thisLine = []byte{}
 				indeces := searchPattern.FindAllStringIndex(toProcess, -1)
 
 				if indeces != nil {
 					lineResult := collectLineResult(toProcess, indeces, lineNum, startLineOffset, windowSize)
 					fileResults = append(fileResults, lineResult...)
 				}
+				lineNum++
+				lineOffset = 0
+				startLineOffset = 0
+				thisLine = []byte{}
 				continue
 			}
 			thisLine = append(thisLine, letter)
