@@ -33,8 +33,8 @@ func isValidPath(path string, info os.FileInfo, filePattern *regexp.Regexp, excl
 		}
 	}
 
-	if !filePattern.MatchString(path) {
-		return false
+	if filePattern.MatchString(path) {
+		return true
 	}
 
 	return true
@@ -109,53 +109,43 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 	var carryOver []byte
 
 	for {
-		_, err := file.Read(buffer)
+		n, err := file.Read(buffer)
+		thisChunk := append(carryOver, buffer[:n]...)
 
-		if !utf8.Valid(buffer) {
+		if !utf8.Valid(thisChunk) {
 			return
 		}
 
-		// carry over line index and offset from last iteration
-		startLineOffset := lineOffset
-		startLineNum := lineNum
-
-		// init variables to track upcoming line
-		currentLine := true
-		thisChunk := append(carryOver, buffer...)
+		thisLine := []byte{}
 		carryOver = []byte{}
-		toProcess := []byte{}
+		startLineOffset := lineOffset
 
 		for _, letter := range thisChunk {
 			if letter == '\n' {
 				lineNum++
 				lineOffset = 0
-				currentLine = false
+				startLineOffset = 0
+				toProcess := string(thisLine)
+				thisLine = []byte{}
+				indeces := searchPattern.FindAllStringIndex(toProcess, -1)
+
+				if indeces != nil {
+					lineResult := collectLineResult(toProcess, indeces, lineNum, startLineOffset, windowSize)
+					fileResults = append(fileResults, lineResult...)
+				}
 				continue
 			}
-
-			if currentLine == true {
-				lineOffset++
-				toProcess = append(toProcess, letter)
-			} else {
-				carryOver = append(carryOver, letter)
-
-			}
-
+			thisLine = append(thisLine, letter)
+			lineOffset++
 		}
+
+		carryOver = append(carryOver, thisLine...)
 
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
 			return
-		}
-
-		line := string(toProcess)
-		indeces := searchPattern.FindAllStringIndex(line, -1)
-
-		if indeces != nil {
-			lineResult := collectLineResult(line, indeces, startLineNum, startLineOffset, windowSize)
-			fileResults = append(fileResults, lineResult...)
 		}
 	}
 
