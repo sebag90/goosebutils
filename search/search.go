@@ -88,6 +88,17 @@ func printResult(fileName string, results []string) {
 	printMutex.Unlock()
 }
 
+func findFileResults(thisLine []byte, searchPattern *regexp.Regexp, lineNum, lineOffset, windowSize int) []string {
+	searchResults := []string{}
+	toProcess := string(thisLine)
+	indeces := searchPattern.FindAllStringIndex(toProcess, -1)
+
+	if indeces != nil {
+		searchResults = collectLineResult(toProcess, indeces, lineNum, lineOffset, windowSize)
+	}
+	return searchResults
+}
+
 func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int, nameOnly bool) {
 	if nameOnly {
 		printResult(filePath, []string{})
@@ -122,14 +133,8 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 
 		for _, letter := range thisChunk {
 			if letter == '\n' {
-				toProcess := string(thisLine)
-				indeces := searchPattern.FindAllStringIndex(toProcess, -1)
-
-				if indeces != nil {
-					lineResult := collectLineResult(toProcess, indeces, lineNum, lineOffset, windowSize)
-					fileResults = append(fileResults, lineResult...)
-				}
-
+				lineResults := findFileResults(thisLine, searchPattern, lineNum, lineOffset, windowSize)
+				fileResults = append(fileResults, lineResults...)
 				// update counters
 				lineNum++
 				lineOffset = 1
@@ -143,6 +148,13 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 		lineOffset += len(thisChunk) - len(thisLine)
 		carryOver = append(carryOver, thisLine...)
 
+		if len(carryOver) == chunkSize*3 {
+			lineResults := findFileResults(carryOver, searchPattern, lineNum, lineOffset, windowSize)
+			fileResults = append(fileResults, lineResults...)
+			lineOffset += len(thisChunk)
+			carryOver = []byte{}
+		}
+
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -152,12 +164,8 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 	}
 
 	if len(carryOver) > 0 {
-		toProcess := string(carryOver)
-		indices := searchPattern.FindAllStringIndex(toProcess, -1)
-		if indices != nil {
-			lineResult := collectLineResult(toProcess, indices, lineNum, lineOffset, windowSize)
-			fileResults = append(fileResults, lineResult...)
-		}
+		lineResults := findFileResults(carryOver, searchPattern, lineNum, lineOffset, windowSize)
+		fileResults = append(fileResults, lineResults...)
 	}
 
 	if len(fileResults) > 0 {
