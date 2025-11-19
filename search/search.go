@@ -142,7 +142,6 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 		// the rest will be processed in next iteration, remove it from lineOffset
 		lineOffset += len(thisChunk) - len(thisLine)
 		carryOver = append(carryOver, thisLine...)
-		fmt.Println(len(carryOver))
 
 		if err != nil {
 			if err == io.EOF {
