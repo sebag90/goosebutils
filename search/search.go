@@ -105,7 +105,8 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 
 	fileResults := []string{}
 	lineNum := 1
-	lineOffset := 0
+	lineOffset := 1
+
 	var carryOver []byte
 
 	for {
@@ -118,7 +119,6 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 
 		thisLine := []byte{}
 		carryOver = []byte{}
-		startLineOffset := lineOffset
 
 		for _, letter := range thisChunk {
 			if letter == '\n' {
@@ -126,26 +126,38 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 				indeces := searchPattern.FindAllStringIndex(toProcess, -1)
 
 				if indeces != nil {
-					lineResult := collectLineResult(toProcess, indeces, lineNum, startLineOffset, windowSize)
+					lineResult := collectLineResult(toProcess, indeces, lineNum, lineOffset, windowSize)
 					fileResults = append(fileResults, lineResult...)
 				}
+
+				// update counters
 				lineNum++
-				lineOffset = 0
-				startLineOffset = 0
+				lineOffset = 1
 				thisLine = []byte{}
 				continue
 			}
 			thisLine = append(thisLine, letter)
-			lineOffset++
 		}
 
+		// the rest will be processed in next iteration, remove it from lineOffset
+		lineOffset += len(thisChunk) - len(thisLine)
 		carryOver = append(carryOver, thisLine...)
+		fmt.Println(len(carryOver))
 
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
 			return
+		}
+	}
+
+	if len(carryOver) > 0 {
+		toProcess := string(carryOver)
+		indices := searchPattern.FindAllStringIndex(toProcess, -1)
+		if indices != nil {
+			lineResult := collectLineResult(toProcess, indices, lineNum, lineOffset, windowSize)
+			fileResults = append(fileResults, lineResult...)
 		}
 	}
 
