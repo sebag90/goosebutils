@@ -22,6 +22,13 @@ const (
 
 var printMutex sync.Mutex
 
+func Min(a, b int) int {
+	if a > b {
+		return b
+	}
+	return a
+}
+
 func isValidPath(path string, info os.FileInfo, filePattern *regexp.Regexp, excludePattern []*regexp.Regexp) bool {
 	if info.IsDir() {
 		return false
@@ -111,66 +118,69 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 	}
 	defer file.Close()
 
-	const chunkSize = 1024 * 1024
+	const chunkSize = 10 //1024 * 1024
+	const nextChunkSize = 512
+	var n int
+
+	nextBuffer := make([]byte, chunkSize)
 	buffer := make([]byte, chunkSize)
 
-	fileResults := []string{}
-	lineNum := 1
-	lineOffset := 1
-
-	var carryOver []byte
-
+	// fileResults := []string{}
+	// lineNum := 1
+	// lineOffset := 1
+	var prevN int
 	for {
-		n, err := file.Read(buffer)
-		thisChunk := append(carryOver, buffer[:n]...)
-
-		if !utf8.Valid(thisChunk) {
-			return
-		}
-
-		thisLine := []byte{}
-		carryOver = []byte{}
-
-		for _, letter := range thisChunk {
-			if letter == '\n' {
-				lineResults := findFileResults(thisLine, searchPattern, lineNum, lineOffset, windowSize)
-				fileResults = append(fileResults, lineResults...)
-				// update counters
-				lineNum++
-				lineOffset = 1
-				thisLine = []byte{}
-				continue
-			}
-			thisLine = append(thisLine, letter)
-		}
-
-		// the rest will be processed in next iteration, remove it from lineOffset
-		lineOffset += len(thisChunk) - len(thisLine)
-		carryOver = append(carryOver, thisLine...)
-
-		if len(carryOver) == chunkSize*3 {
-			lineResults := findFileResults(carryOver, searchPattern, lineNum, lineOffset, windowSize)
-			fileResults = append(fileResults, lineResults...)
-			lineOffset += len(thisChunk)
-			carryOver = []byte{}
-		}
-
+		// schedule next read
+		n, err = file.Read(nextBuffer)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
 			return
 		}
+
+		// process *previous* buffer
+		thisChunk := buffer[:prevN] // prevN is the previous read size
+		if len(thisChunk) > 0 {
+			fmt.Println(string(thisChunk), "--", string(nextBuffer[:n]))
+		}
+
+		// rotate buffers and sizes
+		buffer, nextBuffer = nextBuffer, buffer
+		prevN = n
 	}
 
-	if len(carryOver) > 0 {
-		lineResults := findFileResults(carryOver, searchPattern, lineNum, lineOffset, windowSize)
-		fileResults = append(fileResults, lineResults...)
+	if !utf8.Valid(buffer) {
+		return
 	}
 
-	if len(fileResults) > 0 {
-		printResult(filePath, fileResults)
-	}
+	// 	fmt.Println(string(thisChunk))
+
+	// 	thisLine := []byte{}
+
+	// 	for _, letter := range thisChunk {
+	// 		if letter == '\n' {
+	// 			lineResults := findFileResults(thisLine, searchPattern, lineNum, lineOffset, windowSize)
+	// 			fileResults = append(fileResults, lineResults...)
+	// 			// update counters
+	// 			lineNum++
+	// 			lineOffset = 1
+	// 			thisLine = []byte{}
+	// 			continue
+	// 		}
+	// 		thisLine = append(thisLine, letter)
+	// 	}
+
+	// 	// the rest will be processed in next iteration, remove it from lineOffset
+	// 	lineOffset += len(thisChunk) - len(thisLine)
+
+	// 	buffer = nextBuffer
+	// 	fmt.Println(string(buffer), "--")
+	// }
+
+	// if len(fileResults) > 0 {
+	// 	printResult(filePath, fileResults)
+	// }
 }
 
 func Search(path, searchPattern, filePattern string, excludeFilePatterns []string, windowSize int, ignoreCase, nameOnly bool) {
