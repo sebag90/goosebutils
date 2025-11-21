@@ -60,29 +60,28 @@ func collectPaths(root string, pattern *regexp.Regexp, excludePattern []*regexp.
 	})
 }
 
-func collectLineResult(line string, indeces [][]int, lineNum, lineOffset, windowSize int) []string {
+func collectLineResult(line string, indeces []int, lineNum, lineOffset, windowSize int) []string {
 	results := []string{}
 
-	for _, m := range indeces {
-		start, end := m[0], m[1]
-		leftMarginIndex := max(0, start-windowSize)
-		rightMarginIndex := min(len(line), end+windowSize)
-		if windowSize < 0 {
-			leftMarginIndex = 0
-			rightMarginIndex = len(line)
-		}
-
-		leftMargin := line[leftMarginIndex:start]
-		rightMargin := line[end:rightMarginIndex]
-		coloredWord := fmt.Sprintf("%s%s%s", RED, line[start:end], END)
-		linetoDisplay := fmt.Sprintf("%s%s%s", leftMargin, coloredWord, rightMargin)
-
-		results = append(results, fmt.Sprintf("\t%s:%-20s%s",
-			fmt.Sprintf("%s%d%s", YELLOW, lineNum, END),
-			fmt.Sprintf("%s%d%s", GREEN, start+lineOffset, END),
-			strings.TrimSpace(linetoDisplay),
-		))
+	start, end := indeces[0], indeces[1]
+	leftMarginIndex := max(0, start-windowSize)
+	rightMarginIndex := min(len(line), end+windowSize)
+	if windowSize < 0 {
+		leftMarginIndex = 0
+		rightMarginIndex = len(line)
 	}
+
+	leftMargin := line[leftMarginIndex:start]
+	rightMargin := line[end:rightMarginIndex]
+	coloredWord := fmt.Sprintf("%s%s%s", RED, line[start:end], END)
+	linetoDisplay := fmt.Sprintf("%s%s%s", leftMargin, coloredWord, rightMargin)
+
+	results = append(results, fmt.Sprintf("\t%s:%-20s%s",
+		fmt.Sprintf("%s%d%s", YELLOW, lineNum, END),
+		fmt.Sprintf("%s%d%s", GREEN, start+lineOffset, END),
+		strings.TrimSpace(linetoDisplay),
+	))
+
 	return results
 }
 
@@ -95,15 +94,41 @@ func printResult(fileName string, results []string) {
 	printMutex.Unlock()
 }
 
-func findFileResults(thisLine []byte, searchPattern *regexp.Regexp, lineNum, lineOffset, windowSize int) []string {
-	searchResults := []string{}
-	toProcess := string(thisLine)
-	indeces := searchPattern.FindAllStringIndex(toProcess, -1)
+func processChunk(
+	inputString,
+	rightExtension string,
+	searchPattern *regexp.Regexp,
+	currentLine, currentCharPosition int,
+) ([]string, int, int) {
+	var results []string
+	processedChars := currentCharPosition
+	splitted := strings.Split(inputString, "\n")
 
-	if indeces != nil {
-		searchResults = collectLineResult(toProcess, indeces, lineNum, lineOffset, windowSize)
+	for lineIndex, line := range splitted {
+		var rightExtendedMargin string
+		if lineIndex == len(splitted)-1 {
+			rightExtendedMargin = strings.Split(rightExtension, "\n")[0]
+			line += rightExtendedMargin
+		}
+		resultIndeces := searchPattern.FindAllStringIndex(line, -1)
+
+		for _, indeces := range resultIndeces {
+			if indeces[0] > len(line)-len(rightExtendedMargin) {
+				continue
+			}
+			searchResults := collectLineResult(line, indeces, currentLine+lineIndex, processedChars, windowSize)
+			results = append(results, searchResults...)
+
+		}
+
+		if lineIndex == len(splitted)-1 {
+			processedChars += len(line) - len(rightExtendedMargin)
+		} else {
+			processedChars = 1
+		}
+
 	}
-	return searchResults
+	return results, len(splitted) - 1, processedChars
 }
 
 func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int, nameOnly bool) {
@@ -118,17 +143,17 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 	}
 	defer file.Close()
 
-	const chunkSize = 10 //1024 * 1024
+	const chunkSize = 1024
 	const nextChunkSize = 512
 	var n int
 
 	nextBuffer := make([]byte, chunkSize)
 	buffer := make([]byte, chunkSize)
+	var fileResults, results []string
 
-	// fileResults := []string{}
-	// lineNum := 1
-	// lineOffset := 1
-	var prevN int
+	currentLine := 1
+	var prevN, processedChars, processedLines int
+
 	for {
 		// schedule next read
 		n, err = file.Read(nextBuffer)
@@ -139,10 +164,19 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 			return
 		}
 
-		// process *previous* buffer
+		// process previous buffer
 		thisChunk := buffer[:prevN] // prevN is the previous read size
 		if len(thisChunk) > 0 {
-			fmt.Println(string(thisChunk), "--", string(nextBuffer[:n]))
+			rightExtension := nextBuffer[:Min(n, nextChunkSize)]
+			results, processedLines, processedChars = processChunk(
+				string(thisChunk),
+				string(rightExtension),
+				searchPattern,
+				currentLine,
+				processedChars,
+			)
+			fileResults = append(fileResults, results...)
+			currentLine += processedLines
 		}
 
 		// rotate buffers and sizes
@@ -150,37 +184,23 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 		prevN = n
 	}
 
+	// process last chunk
+	results, _, _ = processChunk(
+		string(buffer[:prevN]),
+		"",
+		searchPattern,
+		currentLine,
+		processedChars,
+	)
+	fileResults = append(fileResults, results...)
+
 	if !utf8.Valid(buffer) {
 		return
 	}
 
-	// 	fmt.Println(string(thisChunk))
-
-	// 	thisLine := []byte{}
-
-	// 	for _, letter := range thisChunk {
-	// 		if letter == '\n' {
-	// 			lineResults := findFileResults(thisLine, searchPattern, lineNum, lineOffset, windowSize)
-	// 			fileResults = append(fileResults, lineResults...)
-	// 			// update counters
-	// 			lineNum++
-	// 			lineOffset = 1
-	// 			thisLine = []byte{}
-	// 			continue
-	// 		}
-	// 		thisLine = append(thisLine, letter)
-	// 	}
-
-	// 	// the rest will be processed in next iteration, remove it from lineOffset
-	// 	lineOffset += len(thisChunk) - len(thisLine)
-
-	// 	buffer = nextBuffer
-	// 	fmt.Println(string(buffer), "--")
-	// }
-
-	// if len(fileResults) > 0 {
-	// 	printResult(filePath, fileResults)
-	// }
+	if len(fileResults) > 0 {
+		printResult(filePath, fileResults)
+	}
 }
 
 func Search(path, searchPattern, filePattern string, excludeFilePatterns []string, windowSize int, ignoreCase, nameOnly bool) {
