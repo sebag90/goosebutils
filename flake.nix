@@ -57,7 +57,7 @@
               self.packages.${system}.search
               # self.packages.${system}.replace
               self.packages.${system}.dstroy
-              self.packages.${system}.dstroy
+              self.packages.${system}.devenver
             ];
           };
         });
