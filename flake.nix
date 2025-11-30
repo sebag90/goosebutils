@@ -27,14 +27,6 @@
             vendorHash = null;
           };
 
-          # replace = pkgs.buildGoModule {
-          #   pname = "replace";
-          #   version = "0.1.0";
-          #   src = self;
-          #   subPackages = [ "replace" ];
-          #   vendorHash = null;
-          # };
-
           dstroy = pkgs.buildGoModule {
             pname = "dstroy";
             version = "0.1.0";
@@ -55,7 +47,6 @@
             name = "goosebutils";
             paths = [
               self.packages.${system}.search
-              # self.packages.${system}.replace
               self.packages.${system}.dstroy
               self.packages.${system}.devenver
             ];
