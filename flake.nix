@@ -5,7 +5,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs";  
   };
 
-  outputs = { self, nixpkgs, goosebutils, ... }:
+  outputs = { self, nixpkgs, ... }:
     let
       system = builtins.currentSystem;
       pkgs = import nixpkgs { inherit system; };
