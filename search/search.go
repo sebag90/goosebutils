@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,6 +21,13 @@ const (
 )
 
 var printMutex sync.Mutex
+
+func Min(a, b int) int {
+	if a > b {
+		return b
+	}
+	return a
+}
 
 func isValidPath(path string, info os.FileInfo, filePattern *regexp.Regexp, excludePattern []*regexp.Regexp) bool {
 	if info.IsDir() {
@@ -53,29 +60,28 @@ func collectPaths(root string, pattern *regexp.Regexp, excludePattern []*regexp.
 	})
 }
 
-func collectLineResult(line string, indeces [][]int, lineNum, windowSize int) []string {
+func collectLineResult(line string, indeces []int, lineNum, lineOffset, windowSize int) []string {
 	results := []string{}
 
-	for _, m := range indeces {
-		start, end := m[0], m[1]
-		leftMarginIndex := max(0, start-windowSize)
-		rightMarginIndex := min(len(line), end+windowSize)
-		if windowSize < 0 {
-			leftMarginIndex = 0
-			rightMarginIndex = len(line)
-		}
-
-		leftMargin := line[leftMarginIndex:start]
-		rightMargin := line[end:rightMarginIndex]
-		coloredWord := fmt.Sprintf("%s%s%s", RED, line[start:end], END)
-		linetoDisplay := fmt.Sprintf("%s%s%s", leftMargin, coloredWord, rightMargin)
-
-		results = append(results, fmt.Sprintf("\t%s:%s\t%s",
-			fmt.Sprintf("%s%d%s", YELLOW, lineNum, END),
-			fmt.Sprintf("%s%d%s", GREEN, start, END),
-			strings.TrimSpace(linetoDisplay),
-		))
+	start, end := indeces[0], indeces[1]
+	leftMarginIndex := max(0, start-windowSize)
+	rightMarginIndex := min(len(line), end+windowSize)
+	if windowSize < 0 {
+		leftMarginIndex = 0
+		rightMarginIndex = len(line)
 	}
+
+	leftMargin := line[leftMarginIndex:start]
+	rightMargin := line[end:rightMarginIndex]
+	coloredWord := fmt.Sprintf("%s%s%s", RED, line[start:end], END)
+	linetoDisplay := fmt.Sprintf("%s%s%s", leftMargin, coloredWord, rightMargin)
+
+	results = append(results, fmt.Sprintf("\t%s:%-20s%s",
+		fmt.Sprintf("%s%d%s", YELLOW, lineNum, END),
+		fmt.Sprintf("%s%d%s", GREEN, start+lineOffset, END),
+		strings.TrimSpace(linetoDisplay),
+	))
+
 	return results
 }
 
@@ -86,6 +92,43 @@ func printResult(fileName string, results []string) {
 		fmt.Println(line)
 	}
 	printMutex.Unlock()
+}
+
+func processChunk(
+	inputString,
+	rightExtension string,
+	searchPattern *regexp.Regexp,
+	currentLine, currentCharPosition int,
+) ([]string, int, int) {
+	var results []string
+	processedChars := currentCharPosition
+	splitted := strings.Split(inputString, "\n")
+
+	for lineIndex, line := range splitted {
+		var rightExtendedMargin string
+		if lineIndex == len(splitted)-1 {
+			rightExtendedMargin = strings.Split(rightExtension, "\n")[0]
+			line += rightExtendedMargin
+		}
+		resultIndeces := searchPattern.FindAllStringIndex(line, -1)
+
+		for _, indeces := range resultIndeces {
+			if indeces[0] > len(line)-len(rightExtendedMargin) {
+				continue
+			}
+			searchResults := collectLineResult(line, indeces, currentLine+lineIndex, processedChars, windowSize)
+			results = append(results, searchResults...)
+
+		}
+
+		if lineIndex == len(splitted)-1 {
+			processedChars += len(line) - len(rightExtendedMargin)
+		} else {
+			processedChars = 1
+		}
+
+	}
+	return results, len(splitted) - 1, processedChars
 }
 
 func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int, nameOnly bool) {
@@ -100,33 +143,63 @@ func searchInFile(filePath string, searchPattern *regexp.Regexp, windowSize int,
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	const maxCapacity = 1024 * 1024 * 100
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, maxCapacity)
+	const chunkSize = 1024
+	const nextChunkSize = 512
+	var n int
 
-	fileResults := []string{}
-	lineIndex := 1
-	for scanner.Scan() {
-		bytesLine := scanner.Bytes()
-		if !utf8.Valid(bytesLine) {
+	nextBuffer := make([]byte, chunkSize)
+	buffer := make([]byte, chunkSize)
+	var fileResults, results []string
+
+	currentLine := 1
+	var prevN, processedChars, processedLines int
+
+	for {
+		// schedule next read
+		n, err = file.Read(nextBuffer)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return
 		}
-		line := string(bytesLine)
-		indeces := searchPattern.FindAllStringIndex(line, -1)
-		if indeces != nil {
-			lineResult := collectLineResult(line, indeces, lineIndex, windowSize)
-			fileResults = append(fileResults, lineResult...)
+
+		// process previous buffer
+		thisChunk := buffer[:prevN] // prevN is the previous read size
+		if len(thisChunk) > 0 {
+			rightExtension := nextBuffer[:Min(n, nextChunkSize)]
+			results, processedLines, processedChars = processChunk(
+				string(thisChunk),
+				string(rightExtension),
+				searchPattern,
+				currentLine,
+				processedChars,
+			)
+			fileResults = append(fileResults, results...)
+			currentLine += processedLines
 		}
-		lineIndex++
+
+		// rotate buffers and sizes
+		buffer, nextBuffer = nextBuffer, buffer
+		prevN = n
+	}
+
+	// process last chunk
+	results, _, _ = processChunk(
+		string(buffer[:prevN]),
+		"",
+		searchPattern,
+		currentLine,
+		processedChars,
+	)
+	fileResults = append(fileResults, results...)
+
+	if !utf8.Valid(buffer) {
+		return
 	}
 
 	if len(fileResults) > 0 {
 		printResult(filePath, fileResults)
-	}
-
-	if err := scanner.Err(); err != nil {
-		return
 	}
 }
 
