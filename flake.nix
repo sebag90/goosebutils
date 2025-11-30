@@ -15,7 +15,7 @@
         search = pkgs.buildGoModule {
           pname = "search";
           version = "0.1.0";
-          src = goosebutils;
+          src = self;
           subPackages = [ "search" ];
           vendorHash = null;  # Let Nix compute it for you (use `nix build` to get the hash)
         };
@@ -24,7 +24,7 @@
         replace = pkgs.buildGoModule {
           pname = "replace";
           version = "0.1.0";
-          src = goosebutils;
+          src = self;
           subPackages = [ "replace" ];
           vendorHash = null;
         };
@@ -33,7 +33,7 @@
         dstroy = pkgs.buildGoModule {
           pname = "dstroy";
           version = "0.1.0";
-          src = goosebutils;
+          src = self;
           subPackages = [ "dstroy" ];
           vendorHash = null;
         };
@@ -41,7 +41,7 @@
         devenver = pkgs.buildGoModule {
           pname = "devenver";
           version = "0.1.0";
-          src = goosebutils;
+          src = self;
           subPackages = [ "devenver" ];
           vendorHash = null;
         };
