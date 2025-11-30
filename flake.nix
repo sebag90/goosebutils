@@ -38,8 +38,8 @@
           devenver = pkgs.buildGoModule {
             pname = "devenver";
             version = "0.1.0";
-            src = self;
-            subPackages = [ "devenver" ];
+            src = pkgs.lib.cleanSource ./devenver;
+            modVendor = false;
             vendorHash = null;
           };
 
