@@ -9,7 +9,7 @@
 
   outputs = { self, nixpkgs, goosebutils, ... }:
     let
-      system = builtins.currentSystem
+      system = builtins.currentSystem;
       pkgs = import nixpkgs { inherit system; };
     in {
 
