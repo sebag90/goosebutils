@@ -2,9 +2,7 @@
   description = "Goosebutils — multiple Go utilities built with Nix flakes";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs";
-    # If your repo is public on GitHub:
-    goosebutils.url = "github:sebag90/goosebutils";
+    nixpkgs.url = "github:NixOS/nixpkgs";  
   };
 
   outputs = { self, nixpkgs, goosebutils, ... }:
