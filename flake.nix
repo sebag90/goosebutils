@@ -1,64 +1,68 @@
 {
-  description = "Goosebutils — multiple Go utilities built with Nix flakes";
+  description = "Goosebutils — multiple Go utilities";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs";  
+    nixpkgs.url = "github:NixOS/nixpkgs";
   };
 
-  outputs = { self, nixpkgs, ... }:
+  outputs = inputs@{ self, nixpkgs, ... }:
     let
-      system = builtins.currentSystem;
-      pkgs = import nixpkgs { inherit system; };
-    in {
+      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      forAllSystems = f: builtins.listToAttrs (map (system: {
+        name = system;
+        value = f system;
+      }) supportedSystems);
+    in
+    {
+      packages = forAllSystems (system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in
+        {
+          search = pkgs.buildGoModule {
+            pname = "search";
+            version = "0.1.0";
+            src = self;
+            subPackages = [ "search" ];
+            vendorHash = null;
+          };
 
-      packages.${system} = {
-        search = pkgs.buildGoModule {
-          pname = "search";
-          version = "0.1.0";
-          src = self;
-          subPackages = [ "search" ];
-          vendorHash = null;  # Let Nix compute it for you (use `nix build` to get the hash)
-        };
+          replace = pkgs.buildGoModule {
+            pname = "replace";
+            version = "0.1.0";
+            src = self;
+            subPackages = [ "replace" ];
+            vendorHash = null;
+          };
 
-        # Build the `replace` binary
-        replace = pkgs.buildGoModule {
-          pname = "replace";
-          version = "0.1.0";
-          src = self;
-          subPackages = [ "replace" ];
-          vendorHash = null;
-        };
+          dstroy = pkgs.buildGoModule {
+            pname = "dstroy";
+            version = "0.1.0";
+            src = self;
+            subPackages = [ "dstroy" ];
+            vendorHash = null;
+          };
 
-        # Build the `dstroy` binary
-        dstroy = pkgs.buildGoModule {
-          pname = "dstroy";
-          version = "0.1.0";
-          src = self;
-          subPackages = [ "dstroy" ];
-          vendorHash = null;
-        };
-         
-        devenver = pkgs.buildGoModule {
-          pname = "devenver";
-          version = "0.1.0";
-          src = self;
-          subPackages = [ "devenver" ];
-          vendorHash = null;
-        };
+          devenver = pkgs.buildGoModule {
+            pname = "devenver";
+            version = "0.1.0";
+            src = self;
+            subPackages = [ "devenver" ];
+            vendorHash = null;
+          };
 
-        # Meta-package containing all three
-        default = pkgs.buildEnv {
-          name = "goosebutils";
-          paths = [
-            self.packages.${system}.search
-            self.packages.${system}.replace
-            self.packages.${system}.dstroy
-            self.packages.${system}.devenver
-          ];
-        };
-      };
+          default = pkgs.buildEnv {
+            name = "goosebutils";
+            paths = [
+              self.packages.${system}.search
+              self.packages.${system}.replace
+              self.packages.${system}.dstroy
+              self.packages.${system}.dstroy
+            ];
+          };
+        });
 
-      defaultPackage.${system} = self.packages.${system}.default;
+      # So `nix build` works without specifying a system
+      defaultPackage = forAllSystems (system: self.packages.${system}.default);
     };
 }
-
